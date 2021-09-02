@@ -1,0 +1,603 @@
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE FINALLY2MAIN
+OBJECT MODULE PLACED IN finally2Main.OBJ
+COMPILER INVOKED BY: E:\软件\单片机\keil 4 for C51\C51\BIN\C51.EXE finally2Main.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include<reg52.h>
+   2          #include<intrins.h>
+   3          #define uchar unsigned char
+   4          #define uint unsigned int
+   5          //#define PWM_duty 5     // 控制舵机正向（逆时针）最大速度旋转 3：舵机停止旋转 5：舵机顺时针最大速度旋转
+   6          #define CYCLE 8
+   7          #define RS_CLR RS=0     // 与LCD有关的宏定义
+   8          #define RS_SET RS=1
+   9          
+  10          #define RW_CLR RW=0 
+  11          #define RW_SET RW=1 
+  12          
+  13          #define EN_CLR EN=0
+  14          #define EN_SET EN=1
+  15          
+  16          #define DataPort P0
+  17          #define GPIO_KEY P2
+  18          
+  19          
+  20          
+  21          // 定义常量
+  22          uchar count = 0;                                                                                         // 与舵机有关的计时器
+  23          uchar pack_head[6] = {0xef,0x01,0xff,0xff,0xff,0xff};                     // AS608通讯协议包头
+  24          uchar PS_IdendityBackdata[6] = {0x01,0x00,0x03,0x11,0x00,0x15}; // PS_Identify函数数据发送包
+  25          uchar PassWord[10] = {0};
+  26          uchar PassWordDefine[10] = {1,3,3,4};
+  27          uchar PWM_duty = 1;
+  28          uchar display[5] = {0};
+  29          uchar keyColValue=0;
+  30          uchar keyRowValue=0;
+  31          
+  32          // 定义引脚
+  33          sbit PWM = P1^2;
+  34          sbit Buzzer = P1^3;
+  35          sbit RS = P1^0;   //定义端口 
+  36          sbit RW = P1^1;
+  37          sbit EN = P3^7;
+  38          
+  39          
+  40          // 定义函数
+  41          void delay(uint z)              //@11.0592MHz   //延时函数
+  42          {
+  43   1              uint x,y;
+  44   1              for(x=z;x>0;x--)
+  45   1              for(y=114;y>0;y--);
+  46   1      }
+  47          
+  48          void DelayUs2x(unsigned char t)
+  49          {   
+  50   1       while(--t);
+  51   1      }
+  52          void DelayMs(unsigned char t)
+  53          {
+  54   1           
+  55   1       while(t--)
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 2   
+
+  56   1       {
+  57   2           //大致延时1mS
+  58   2           DelayUs2x(245);
+  59   2               DelayUs2x(245);
+  60   2       }
+  61   1      }
+  62          
+  63          /*------------------------------------------------
+  64                    LCD判忙函数
+  65          ------------------------------------------------*/
+  66           bit LCD_Check_Busy(void) 
+  67           { 
+  68   1       DataPort= 0xFF; 
+  69   1       RS_CLR; 
+  70   1       RW_SET; 
+  71   1       EN_CLR; 
+  72   1       _nop_(); 
+  73   1       EN_SET;
+  74   1       return (bit)(DataPort & 0x80);
+  75   1       }
+  76          /*------------------------------------------------
+  77                        LCD写入命令函数
+  78          ------------------------------------------------*/
+  79           void LCD_Write_Com(unsigned char com) 
+  80           {  
+  81   1       while(LCD_Check_Busy()); //忙则等待
+  82   1       RS_CLR; 
+  83   1       RW_CLR; 
+  84   1       EN_SET; 
+  85   1       DataPort= com; 
+  86   1       _nop_(); 
+  87   1       EN_CLR;
+  88   1       }
+  89          /*------------------------------------------------
+  90                        LCD写入数据函数
+  91          ------------------------------------------------*/
+  92           void LCD_Write_Data(unsigned char Data) 
+  93           { 
+  94   1       while(LCD_Check_Busy()); //忙则等待
+  95   1       RS_SET; 
+  96   1       RW_CLR; 
+  97   1       EN_SET; 
+  98   1       DataPort= Data; 
+  99   1       _nop_();
+ 100   1       EN_CLR;
+ 101   1       }
+ 102           /*------------------------------------------------
+ 103                          LCD清屏函数
+ 104          ------------------------------------------------*/
+ 105           void LCD_Clear(void) 
+ 106           { 
+ 107   1       LCD_Write_Com(0x01); 
+ 108   1       DelayMs(5);
+ 109   1       }
+ 110          /*------------------------------------------------
+ 111                        LCD写入字符串函数
+ 112          ------------------------------------------------*/
+ 113           void LCD_Write_String(unsigned char x,unsigned char y,unsigned char *s) 
+ 114           {     
+ 115   1       if (y == 0) 
+ 116   1              {     
+ 117   2               LCD_Write_Com(0x80 + x);     //表示第一行
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 3   
+
+ 118   2              }
+ 119   1       else 
+ 120   1              {      
+ 121   2              LCD_Write_Com(0xC0 + x);      //表示第二行
+ 122   2              }        
+ 123   1       while (*s) 
+ 124   1              {     
+ 125   2       LCD_Write_Data( *s);     
+ 126   2       s ++;     
+ 127   2              }
+ 128   1       }
+ 129          void LCD_Write_StringShort(unsigned char x,unsigned char y,unsigned char *s,uint i)
+ 130          {
+ 131   1              uint w,k;
+ 132   1              LCD_Clear();
+ 133   1              for(w=i;w>0;w--)
+ 134   1              for(k=114;k>0;k--)
+ 135   1              {
+ 136   2                      LCD_Write_String(x,y,s);
+ 137   2              }
+ 138   1              LCD_Clear();
+ 139   1      }
+ 140          void LCD_Write_StringShortDouble(unsigned char x,unsigned char y,unsigned char *s,unsigned char f,unsigned
+             - char g,unsigned char *h,uint i)
+ 141          {
+ 142   1              uint w,k;
+ 143   1              LCD_Clear();
+ 144   1              for(w=i;w>0;w--)
+ 145   1              for(k=114;k>0;k--)
+ 146   1              {
+ 147   2                      LCD_Write_String(x,y,s);
+ 148   2                      LCD_Write_String(f,g,h);
+ 149   2              }
+ 150   1              LCD_Clear();
+ 151   1      }
+ 152          /*------------------------------------------------
+ 153                        LCD写入字符函数
+ 154          ------------------------------------------------*/
+ 155           void LCD_Write_Char(unsigned char x,unsigned char y,unsigned char Data) 
+ 156           {     
+ 157   1       if (y == 0) 
+ 158   1              {     
+ 159   2              LCD_Write_Com(0x80 + x);     
+ 160   2              }    
+ 161   1       else 
+ 162   1              {     
+ 163   2              LCD_Write_Com(0xC0 + x);     
+ 164   2              }        
+ 165   1       LCD_Write_Data( Data);  
+ 166   1       }
+ 167          /*------------------------------------------------
+ 168                        LCD初始化函数
+ 169          ------------------------------------------------*/
+ 170           void LCD_Init(void) 
+ 171           {
+ 172   1         LCD_Write_Com(0x38);    /*显示模式设置*/ 
+ 173   1         DelayMs(5); 
+ 174   1         LCD_Write_Com(0x38); 
+ 175   1         DelayMs(5); 
+ 176   1         LCD_Write_Com(0x38); 
+ 177   1         DelayMs(5); 
+ 178   1         LCD_Write_Com(0x38);  
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 4   
+
+ 179   1         LCD_Write_Com(0x08);    /*显示关闭*/ 
+ 180   1         LCD_Write_Com(0x01);    /*显示清屏*/ 
+ 181   1         LCD_Write_Com(0x06);    /*显示光标移动设置*/ 
+ 182   1         DelayMs(5); 
+ 183   1         LCD_Write_Com(0x0C);    /*显示开及光标设置*/
+ 184   1         }
+ 185          
+ 186          void Timer0Init(void)           //0.5毫秒@11.0592MHz   // 定时器0 工作模式1 产生舵机PWM方波
+ 187          {
+ 188   1              TMOD = 0x01;            //设置定时器模式
+ 189   1              IE = 0x82;
+ 190   1              TH0 = 0xf6;             //设置定时初值
+ 191   1              TL0 = 0xdc;     
+ 192   1      //      EA = 1;
+ 193   1      //      ET0 = 1;        //设置定时初值
+ 194   1              //TF0 = 0;              //清除TF0标志
+ 195   1              TR0 = 1;                //定时器0开始计时
+ 196   1      }  
+ 197          
+ 198          void uart_init()                 //串行口初始化
+ 199          {
+ 200   1              TMOD=0x20;
+ 201   1              TH1=0xfd;
+ 202   1              TL1=0xfd;
+ 203   1              PCON=0x00;
+ 204   1              SCON=0x50;
+ 205   1              EA=1;
+ 206   1              ES=1;
+ 207   1              TR1=1;
+ 208   1      }
+ 209          
+ 210          void sent_byte(uchar date)                //发送一字节数据
+ 211          {
+ 212   1              SBUF=date;
+ 213   1              while(!TI);
+ 214   1              TI=0;
+ 215   1      }
+ 216          uchar receive_byte()                      //接收一字节数据
+ 217          {
+ 218   1              uchar date;
+ 219   1              while(!RI);
+ 220   1              RI=0;
+ 221   1              date=SBUF;
+ 222   1              return date;
+ 223   1      }
+ 224          
+ 225          void PS_Identify()
+ 226          {
+ 227   1              int i;
+ 228   1              for(i=0;i<6;i++)
+ 229   1              {
+ 230   2                      sent_byte(pack_head[i]);
+ 231   2              }
+ 232   1      
+ 233   1              for(i=0;i<6;i++)
+ 234   1              {
+ 235   2                      sent_byte(PS_IdendityBackdata[i]);
+ 236   2              }
+ 237   1      }
+ 238          
+ 239          /*-------------------------------------
+ 240                                  蜂鸣器函数
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 5   
+
+ 241          --------------------------------------*/
+ 242          void BUZZER(uint i)
+ 243          {
+ 244   1              Buzzer = 0;
+ 245   1              delay(i);
+ 246   1              Buzzer = 1;
+ 247   1              delay(50);
+ 248   1      }
+ 249          
+ 250          /*------------------------------------
+ 251                                  矩阵键盘扫描函数
+ 252          -------------------------------------*/
+ 253          void keyDown()
+ 254          {
+ 255   1      
+ 256   1              GPIO_KEY = 0x0f;
+ 257   1              if(GPIO_KEY != 0x0f)
+ 258   1              {
+ 259   2                      delay(10);
+ 260   2                      if(GPIO_KEY != 0x0f)                                            // 检测行数
+ 261   2                      {
+ 262   3                              switch(GPIO_KEY)
+ 263   3                              {
+ 264   4                                      case 0x07: keyRowValue = 1;break;
+ 265   4                                      case 0x0b: keyRowValue = 2;break;
+ 266   4                                      case 0x0d: keyRowValue = 3;break;
+ 267   4                                      case 0x0e: keyRowValue = 4;break;
+ 268   4                              }
+ 269   3      
+ 270   3                      }
+ 271   2              }
+ 272   1              GPIO_KEY = 0xf0;
+ 273   1              if(GPIO_KEY != 0xf0)
+ 274   1              {
+ 275   2                      delay(10);
+ 276   2                      if(GPIO_KEY != 0xf0)                                              // 检测列数
+ 277   2                      {
+ 278   3                              switch(GPIO_KEY)
+ 279   3                              {
+ 280   4                                      case 0xe0: keyColValue = 1;break;
+ 281   4                                      case 0xd0: keyColValue = 2;break;
+ 282   4                                      case 0xb0: keyColValue = 3;break;
+ 283   4                                      case 0x70: keyColValue = 4;break;
+ 284   4                              }
+ 285   3                      }
+ 286   2              }
+ 287   1      /*      while((a < 50) && (GPIO_KEY != 0xf0))  //延时，确保没有按键再按下
+ 288   1        {
+ 289   1         delay(50);
+ 290   1         a ++;
+ 291   1        }     */
+ 292   1        delay(10);
+ 293   1      
+ 294   1      }
+ 295          
+ 296          /*------------------------------------
+ 297                      主函数
+ 298          ------------------------------------*/
+ 299          
+ 300          void main()
+ 301          {
+ 302   1              int i=0;
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 6   
+
+ 303   1              uint j = 0;
+ 304   1              uint k = 0;
+ 305   1              uint passWordFlag = 1;
+ 306   1              uint passWordKeep = 1;
+ 307   1              
+ 308   1              unsigned char date[32];
+ 309   1              LCD_Init(); 
+ 310   1              LCD_Clear();//清屏
+ 311   1              while(1)
+ 312   1              {
+ 313   2                      keyDown();
+ 314   2                      /*---------------------------------------------
+ 315   2                                                      密码模式
+ 316   2                      ----------------------------------------------*/
+ 317   2                      if((keyRowValue == 3) && (keyColValue == 4))   // 密码模式
+ 318   2                      {
+ 319   3                              keyRowValue = 0;
+ 320   3                              keyColValue = 0;
+ 321   3                              LCD_Write_StringShortDouble(1,0,"Mode:",1,1,"PassWord",50);
+ 322   3                              while(passWordFlag)
+ 323   3                              {
+ 324   4      
+ 325   4                                      while(!keyRowValue)                               // 停顿直到行数改变
+ 326   4                                      {
+ 327   5                                      LCD_Write_StringShort(0,0,"keydown",15);
+ 328   5                                              keyDown();
+ 329   5                                              
+ 330   5                                      }
+ 331   4                                      if((keyRowValue == 1) && (keyColValue == 1))
+ 332   4                                      {
+ 333   5                                              PassWord[i] = 1;
+ 334   5                                              i++;
+ 335   5                                              keyRowValue = 0;
+ 336   5                                              keyColValue = 0;
+ 337   5                                      //      delay(200);
+ 338   5                                              LCD_Write_StringShort(0,0,"1",25);
+ 339   5      
+ 340   5                                      }
+ 341   4                                      else if((keyRowValue == 1) && (keyColValue == 2))
+ 342   4                                      {
+ 343   5                                              PassWord[i] = 2;
+ 344   5                                              i++;
+ 345   5                                              keyRowValue = 0;
+ 346   5                                              keyColValue = 0;
+ 347   5                                              LCD_Write_StringShort(0,0,"2",25);
+ 348   5                                      }
+ 349   4                                      else if((keyRowValue == 1) && (keyColValue == 3))
+ 350   4                                      {
+ 351   5                                              PassWord[i]     = 3;
+ 352   5                                              i++;
+ 353   5                                              keyRowValue = 0;
+ 354   5                                              keyColValue = 0;
+ 355   5                                              LCD_Write_StringShort(0,0,"3",25);
+ 356   5                                      }
+ 357   4                                      else if((keyRowValue == 1) && (keyColValue == 4))
+ 358   4                                      {
+ 359   5                                              PassWord[i] = 4;
+ 360   5                                              i++;
+ 361   5                                              keyRowValue = 0;
+ 362   5                                              keyColValue = 0;
+ 363   5                                      //      delay(200);     
+ 364   5                                              LCD_Write_StringShort(0,0,"4",25);                                                                       
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 7   
+
+ 365   5                                      }
+ 366   4                                      else if((keyRowValue == 2) && (keyColValue == 1))
+ 367   4                                      {
+ 368   5                                              PassWord[i]     = 5;
+ 369   5                                              i++;
+ 370   5                                              keyRowValue = 0;
+ 371   5                                              keyColValue = 0;
+ 372   5                                              LCD_Write_StringShort(0,0,"5",25);
+ 373   5                                      }
+ 374   4                                      else if((keyRowValue == 2) && (keyColValue == 2))
+ 375   4                                      {
+ 376   5                                              PassWord[i]     = 6;
+ 377   5                                              i++;
+ 378   5                                              keyRowValue = 0;
+ 379   5                                              keyColValue = 0;
+ 380   5                                              LCD_Write_StringShort(0,0,"6",25);
+ 381   5                                      }
+ 382   4                                      else if((keyRowValue == 2) && (keyColValue == 3))
+ 383   4                                      {
+ 384   5                                              PassWord[i]     = 7;
+ 385   5                                              i++;
+ 386   5                                              keyRowValue = 0;
+ 387   5                                              keyColValue = 0;
+ 388   5                                              LCD_Write_StringShort(0,0,"7",25);
+ 389   5                                      }
+ 390   4                                      else if((keyRowValue == 2) && (keyColValue == 4))
+ 391   4                                      {
+ 392   5                                              PassWord[i]     = 8;
+ 393   5                                              i++;
+ 394   5                                              keyRowValue = 0;
+ 395   5                                              keyColValue = 0;
+ 396   5                                              LCD_Write_StringShort(0,0,"8",25);
+ 397   5                                      }
+ 398   4                                      else if((keyRowValue == 3) && (keyColValue == 1))
+ 399   4                                      {
+ 400   5                                              PassWord[i]     = 9;
+ 401   5                                              i++;
+ 402   5                                              keyRowValue = 0;
+ 403   5                                              keyColValue = 0;
+ 404   5                                              LCD_Write_StringShort(0,0,"9",25);
+ 405   5                                      }
+ 406   4                                      else if((keyRowValue == 3) && (keyColValue == 2))
+ 407   4                                      {
+ 408   5                                              PassWord[i]     = 0;
+ 409   5                                              i++;
+ 410   5                                              keyRowValue = 0;
+ 411   5                                              keyColValue = 0;
+ 412   5                                              LCD_Write_StringShort(0,0,"0",25);
+ 413   5                                      }
+ 414   4                                      if(i==4)
+ 415   4                                      {
+ 416   5                                              for(j=0;j<4;j++)
+ 417   5                                              {
+ 418   6                                                      if((PassWord[j]==PassWordDefine[j]) && j==3)
+ 419   6                                                      {
+ 420   7                                                              passWordFlag = 0;
+ 421   7                                                      }
+ 422   6                                                      if(PassWord[j]!=PassWordDefine[j])
+ 423   6                                                      {
+ 424   7                                                              break;
+ 425   7                                                      }
+ 426   6                                              }
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 8   
+
+ 427   5      
+ 428   5                                      }
+ 429   4      
+ 430   4                                      if(i==4 && passWordFlag==1)
+ 431   4                                      {
+ 432   5                                              BUZZER(1000);
+ 433   5                                              LCD_Clear();
+ 434   5                                              while(1)
+ 435   5                                              {
+ 436   6                                                      LCD_Write_String(0,0,"wrong password!");
+ 437   6                                              }
+ 438   5                                      }
+ 439   4                              }
+ 440   3                              if(passWordFlag == 0)
+ 441   3                              {
+ 442   4                                      LCD_Clear();
+ 443   4                                      LCD_Write_StringShort(1,0,"Success!",25);
+ 444   4                                      Timer0Init();
+ 445   4                                      delay(2000);
+ 446   4                                      ET0 = 0;
+ 447   4                                      TR0 = 0;
+ 448   4                              }
+ 449   3                      }
+ 450   2                      /*---------------------------------------------
+ 451   2                                                      指纹模式
+ 452   2                      ----------------------------------------------*/
+ 453   2                      if((keyRowValue == 4) && (keyColValue == 1))                               // 指纹模式
+ 454   2                      {
+ 455   3                               LCD_Write_StringShortDouble(1,0,"Mode:",1,1,"Fingerprint",50);
+ 456   3                               uart_init();
+ 457   3                              PS_Identify();                          // 调用自动验证指纹函数
+ 458   3      
+ 459   3                              for(i=0;i<16;i++)
+ 460   3                              {
+ 461   4                                      date[i] = receive_byte();
+ 462   4                      
+ 463   4                              }
+ 464   3                              if(date[9]==0x00)                       // 指纹验证成功时
+ 465   3                              {       
+ 466   4                                      
+ 467   4                                      LCD_Clear();
+ 468   4                                      LCD_Write_StringShort(1,0,"Success!",25);
+ 469   4                                      Timer0Init();
+ 470   4                                      delay(2000);
+ 471   4                                      ET0 = 0;
+ 472   4                                      TR0 = 0;
+ 473   4                                      while(1);
+ 474   4                              }
+ 475   3                              else if(date[9]==0x09)                                          // 指纹验证失败或接收包有错时
+ 476   3                              {
+ 477   4                                      BUZZER(1000);
+ 478   4                                      LCD_Clear();
+ 479   4                                      while(1)
+ 480   4                                      {
+ 481   5                                              LCD_Write_String(0,0,"wrong Finger!");
+ 482   5                                      }
+ 483   4      
+ 484   4                              }
+ 485   3                      }
+ 486   2                      
+ 487   2              }
+ 488   1              while(1);
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 9   
+
+ 489   1      }
+ 490          
+ 491          void Timer0()interrupt 1           // 与舵机有关的计时器1中断
+ 492          {
+ 493   1              TH0 = 0xf6;
+ 494   1              TL0 = 0xdc;
+ 495   1              //TF0 = 0;
+ 496   1              if(count<PWM_duty)
+ 497   1              {
+ 498   2                      PWM = 1;
+ 499   2              }
+ 500   1              else
+ 501   1              {
+ 502   2                      PWM = 0;
+ 503   2                              
+ 504   2              }
+ 505   1              count++;
+ 506   1              count%=CYCLE;
+ 507   1      }
+ 508          
+ 509          void uart() interrupt 4
+ 510          {
+ 511   1              
+ 512   1      }
+ 513          
+ 514          
+ 515          
+ 516          
+ 517          
+ 518          
+ 519          
+ 520          
+ 521          
+ 522          
+ 523          
+ 524          
+ 525          
+ 526          
+ 527          
+ 528          
+ 529          
+ 530          
+ 531          
+ 532          
+ 533          
+ 534          
+ 535          
+ 536          
+ 537          
+ 538          
+ 539          
+ 540          
+ 541          
+ 542          
+ 543          
+ 544          
+ 545          
+ 546          
+ 547          
+ 548          
+ 549          
+ 550          
+C51 COMPILER V9.01   FINALLY2MAIN                                                          11/22/2020 23:46:49 PAGE 10  
+
+ 551          
+ 552          
+ 553          
+ 554          
+ 555          
+ 556          
+ 557          
+ 558          
+ 559          
+ 560          
+ 561          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1457    ----
+   CONSTANT SIZE    =     94    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     41      69
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

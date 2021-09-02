@@ -1,0 +1,272 @@
+C51 COMPILER V9.01   矩誣键盘                                                              11/22/2020 22:34:23 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE 矩誣键盘
+OBJECT MODULE PLACED IN 矩阵键盘.OBJ
+COMPILER INVOKED BY: E:\软件\单片机\keil 4 for C51\C51\BIN\C51.EXE 矩阵键盘.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include<reg52.h>
+   2          #include<intrins.h>
+   3          #define RS_CLR RS=0 
+   4          #define RS_SET RS=1
+   5          
+   6          #define RW_CLR RW=0 
+   7          #define RW_SET RW=1 
+   8          
+   9          #define EN_CLR EN=0
+  10          #define EN_SET EN=1
+  11          
+  12          #define DataPort P0
+  13          #define uchar unsigned char
+  14          #define uint unsigned int
+  15          #define GPIO_KEY P2
+  16          
+  17          uchar keyColValue=0;
+  18          uchar keyRowValue=0;
+  19          uchar display[10] = {0};
+  20          
+  21          sbit Buzzer = P1^3;
+  22          sbit RS = P1^0;   //定义端口 
+  23          sbit RW = P1^1;
+  24          sbit EN = P2^5;
+  25          
+  26          void delay(uint z)              //@11.0592MHz   //延时函数
+  27          {
+  28   1              uint x,y;
+  29   1              for(x=z;x>0;x--)
+  30   1              for(y=114;y>0;y--);
+  31   1      }
+  32          
+  33          void BUZZER(uint i)
+  34          {
+  35   1              Buzzer = 0;
+  36   1              delay(i);
+  37   1              Buzzer = 1;
+  38   1              delay(50);
+  39   1      }
+  40          
+  41          /*uchar keyscan()
+  42          {
+  43                  uchar h,l;
+  44                  P2 = 0xf0;                                               
+  45                  if(P2 & 0xf0!=0xf0)
+  46                  {
+  47                          delay(5);
+  48                          if(P2&0xf0!=0xf0)
+  49                          {
+  50                                  l = P2 & 0xf0;
+  51                                  P2 = l | 0x0f;
+  52                                  h = P2 & 0x0f;
+  53                                  while((P2&0x0f)!=0x0f);
+  54                                  return (h + l);
+  55                          }
+C51 COMPILER V9.01   矩誣键盘                                                              11/22/2020 22:34:23 PAGE 2   
+
+  56                  }
+  57          }*/
+  58          
+  59          void keyDown()
+  60          {
+  61   1              char a;
+  62   1              GPIO_KEY = 0x0f;
+  63   1              if(GPIO_KEY != 0x0f)
+  64   1              {
+  65   2                      delay(10);
+  66   2                      if(GPIO_KEY != 0x0f)                                            // 检测行数
+  67   2                      {
+  68   3                              switch(GPIO_KEY)
+  69   3                              {
+  70   4                                      case 0x07: keyRowValue = 1;break;
+  71   4                                      case 0x0b: keyRowValue = 2;break;
+  72   4                                      case 0x0d: keyRowValue = 3;break;
+  73   4                                      case 0x0e: keyRowValue = 4;break;
+  74   4                              }
+  75   3                      }
+  76   2              }
+  77   1              GPIO_KEY = 0xf0;
+  78   1              if(GPIO_KEY != 0xf0)
+  79   1              {
+  80   2                      delay(10);
+  81   2                      if(GPIO_KEY != 0xf0)                                              // 检测列数
+  82   2                      {
+  83   3                              switch(GPIO_KEY)
+  84   3                              {
+  85   4                                      case 0xe0: keyColValue = 1;break;
+  86   4                                      case 0xd0: keyColValue = 2;break;
+  87   4                                      case 0xb0: keyColValue = 3;break;
+  88   4                                      case 0x70: keyColValue = 4;break;
+  89   4                              }
+  90   3                      }
+  91   2              }
+  92   1      delay(10);
+  93   1      
+  94   1      }
+*** WARNING C280 IN LINE 61 OF 矩阵键盘.C: 'a': unreferenced local variable
+  95          
+  96          /*void keypro()
+  97          {
+  98                  switch(keyscan())
+  99                  {
+ 100                          case 0xff: BUZZER(1000);break;
+ 101                          case 0x7d: BUZZER(500);break;
+ 102                  }
+ 103          } */
+ 104          void DelayUs2x(unsigned char t)
+ 105          {   
+ 106   1       while(--t);
+ 107   1      }
+ 108          /*------------------------------------------------
+ 109           mS延时函数，含有输入参数 unsigned char t，无返回值
+ 110           unsigned char 是定义无符号字符变量，其值的范围是
+ 111           0~255 这里使用晶振12M，精确延时请使用汇编
+ 112          ------------------------------------------------*/
+ 113          void DelayMs(unsigned char t)
+ 114          {
+ 115   1           
+ 116   1       while(t--)
+C51 COMPILER V9.01   矩誣键盘                                                              11/22/2020 22:34:23 PAGE 3   
+
+ 117   1       {
+ 118   2           //大致延时1mS
+ 119   2           DelayUs2x(245);
+ 120   2               DelayUs2x(245);
+ 121   2       }
+ 122   1      }
+ 123          /*------------------------------------------------
+ 124                        判忙函数
+ 125          ------------------------------------------------*/
+ 126           bit LCD_Check_Busy(void) 
+ 127           { 
+ 128   1       DataPort= 0xFF; 
+ 129   1       RS_CLR; 
+ 130   1       RW_SET; 
+ 131   1       EN_CLR; 
+ 132   1       _nop_(); 
+ 133   1       EN_SET;
+ 134   1       return (bit)(DataPort & 0x80);
+ 135   1       }
+ 136          /*------------------------------------------------
+ 137                        写入命令函数
+ 138          ------------------------------------------------*/
+ 139           void LCD_Write_Com(unsigned char com) 
+ 140           {  
+ 141   1       while(LCD_Check_Busy()); //忙则等待
+ 142   1       RS_CLR; 
+ 143   1       RW_CLR; 
+ 144   1       EN_SET; 
+ 145   1       DataPort= com; 
+ 146   1       _nop_(); 
+ 147   1       EN_CLR;
+ 148   1       }
+ 149          /*------------------------------------------------
+ 150                        写入数据函数
+ 151          ------------------------------------------------*/
+ 152           void LCD_Write_Data(unsigned char Data) 
+ 153           { 
+ 154   1       while(LCD_Check_Busy()); //忙则等待
+ 155   1       RS_SET; 
+ 156   1       RW_CLR; 
+ 157   1       EN_SET; 
+ 158   1       DataPort= Data; 
+ 159   1       _nop_();
+ 160   1       EN_CLR;
+ 161   1       }
+ 162           /*------------------------------------------------
+ 163                          清屏函数
+ 164          ------------------------------------------------*/
+ 165           void LCD_Clear(void) 
+ 166           { 
+ 167   1       LCD_Write_Com(0x01); 
+ 168   1       DelayMs(5);
+ 169   1       }
+ 170          /*------------------------------------------------
+ 171                        写入字符串函数
+ 172          ------------------------------------------------*/
+ 173           void LCD_Write_String(unsigned char x,unsigned char y,unsigned char *s) 
+ 174           {     
+ 175   1       if (y == 0) 
+ 176   1              {     
+ 177   2               LCD_Write_Com(0x80 + x);     //表示第一行
+ 178   2              }
+C51 COMPILER V9.01   矩誣键盘                                                              11/22/2020 22:34:23 PAGE 4   
+
+ 179   1       else 
+ 180   1              {      
+ 181   2              LCD_Write_Com(0xC0 + x);      //表示第二行
+ 182   2              }        
+ 183   1       while (*s) 
+ 184   1              {     
+ 185   2       LCD_Write_Data( *s);     
+ 186   2       s ++;     
+ 187   2              }
+ 188   1       }
+ 189          /*------------------------------------------------
+ 190                        写入字符函数
+ 191          ------------------------------------------------*/
+ 192           void LCD_Write_Char(unsigned char x,unsigned char y,unsigned char Data) 
+ 193           {     
+ 194   1       if (y == 0) 
+ 195   1              {     
+ 196   2              LCD_Write_Com(0x80 + x);     
+ 197   2              }    
+ 198   1       else 
+ 199   1              {     
+ 200   2              LCD_Write_Com(0xC0 + x);     
+ 201   2              }        
+ 202   1       LCD_Write_Data( Data);  
+ 203   1       }
+ 204          /*------------------------------------------------
+ 205                        初始化函数
+ 206          ------------------------------------------------*/
+ 207           void LCD_Init(void) 
+ 208           {
+ 209   1         LCD_Write_Com(0x38);    /*显示模式设置*/ 
+ 210   1         DelayMs(5); 
+ 211   1         LCD_Write_Com(0x38); 
+ 212   1         DelayMs(5); 
+ 213   1         LCD_Write_Com(0x38); 
+ 214   1         DelayMs(5); 
+ 215   1         LCD_Write_Com(0x38);  
+ 216   1         LCD_Write_Com(0x08);    /*显示关闭*/ 
+ 217   1         LCD_Write_Com(0x01);    /*显示清屏*/ 
+ 218   1         LCD_Write_Com(0x06);    /*显示光标移动设置*/ 
+ 219   1         DelayMs(5); 
+ 220   1         LCD_Write_Com(0x0C);    /*显示开及光标设置*/
+ 221   1         }
+ 222          
+ 223          void main()
+ 224          {
+ 225   1              LCD_Init(); 
+ 226   1      LCD_Clear();//清屏
+ 227   1              while(1)
+ 228   1              {
+ 229   2                      keyDown();
+ 230   2                      if(keyColValue == 2)
+ 231   2                      {
+ 232   3                              LCD_Write_String(2,1,"11");
+ 233   3                              delay(300);
+ 234   3                              LCD_Clear();
+ 235   3                              delay(300);
+ 236   3                              keyColValue = 0;
+ 237   3                      }
+ 238   2                      
+ 239   2              }
+ 240   1      }
+C51 COMPILER V9.01   矩誣键盘                                                              11/22/2020 22:34:23 PAGE 5   
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    408    ----
+   CONSTANT SIZE    =      3    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     12       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
